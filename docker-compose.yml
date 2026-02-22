@@ -1,0 +1,199 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: zookeeper:3.7.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SASL_ENABLED: "true"
+      ZOOKEEPER_ALLOW_ANONYMOUS_LOGIN: "false"
+      ZOOKEEPER_JAAS_LOGIN_RENEW: "3600000"
+      JVMFLAGS: "-Djava.security.auth.login.config=/etc/kafka/zookeeper_jaas.conf"
+      ZOO_CFG_EXTRA: "authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider sessionRequireClientSASLAuth=true"
+    volumes:
+      - ./kafka/zookeeper_jaas.conf:/etc/kafka/zookeeper_jaas.conf
+
+  kafka-cluster:
+    image: wurstmeister/kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: SASL_SSL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: SASL_SSL://kafka-cluster:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SASL_SSL
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.server.keystore.jks
+      KAFKA_SSL_KEYSTORE_PASSWORD: kafka123
+      KAFKA_SSL_KEY_PASSWORD: kafka123
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.server.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_PASSWORD: kafka123
+      KAFKA_SSL_CLIENT_AUTH: required
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
+      ZOOKEEPER_SASL_ENABLED: "true"
+      KAFKA_ZOOKEEPER_SET_ACL: "true"
+      KAFKA_HEAP_OPTS: "-Xmx2g -Xms1g"
+    volumes:
+      - ./kafka-data:/var/lib/kafka/data
+      - ./kafka/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./kafka/ssl/kafka.server.keystore.jks:/etc/kafka/secrets/kafka.server.keystore.jks
+      - ./kafka/ssl/kafka.server.truststore.jks:/etc/kafka/secrets/kafka.server.truststore.jks
+      - ./kafka/ssl/ca-cert.pem:/etc/kafka/secrets/ca-cert.pem
+    depends_on:
+      - zookeeper
+
+  kafka-acl-setup:
+    image: wurstmeister/kafka:latest
+    depends_on:
+      - kafka-cluster
+    environment:
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+    volumes:
+      - ./kafka/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...'
+        sleep 30
+        kafka-topics.sh --create --if-not-exists --zookeeper zookeeper:2181 --topic order-created --partitions 3 --replication-factor 1
+        kafka-acls.sh --authorizer-properties zookeeper.connect=zookeeper:2181 --add --allow-principal User:order-service --producer --topic order-created
+        kafka-acls.sh --authorizer-properties zookeeper.connect=zookeeper:2181 --add --allow-principal User:user-service --consumer --topic order-created --group user-group
+        kafka-acls.sh --authorizer-properties zookeeper.connect=zookeeper:2181 --add --allow-principal User:kafka-exporter --operation Describe --group user-group
+        kafka-acls.sh --authorizer-properties zookeeper.connect=zookeeper:2181 --add --allow-principal User:kafka-exporter --operation Describe --topic order-created
+        echo 'ACLs have been set up.'
+      "
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    ports:
+      - "9308:9308"
+    command:
+      - '--kafka.server=kafka-cluster:9092'
+      - '--sasl.enabled'
+      - '--sasl.username=kafka-exporter'
+      - '--sasl.password=kafka-exporter-secret'
+      - '--sasl.mechanism=PLAIN'
+      - '--tls.enabled'
+      - '--tls.ca-file=/etc/kafka/secrets/ca-cert.pem'
+      - '--tls.cert-file=/etc/kafka/secrets/kafka-exporter-certificate.pem'
+      - '--tls.key-file=/etc/kafka/secrets/kafka-exporter-key.pem'
+      - '--tls.insecure-skip-tls-verify'
+      - '--topic.filter=^order-created$$'
+      - '--log.level=info'
+    volumes:
+      - ./kafka/ssl/ca-cert.pem:/etc/kafka/secrets/ca-cert.pem
+      - ./kafka/ssl/kafka-exporter-key.pem:/etc/kafka/secrets/kafka-exporter-key.pem
+      - ./kafka/ssl/kafka-exporter-certificate.pem:/etc/kafka/secrets/kafka-exporter-certificate.pem
+    depends_on:
+      - kafka-cluster
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./kafka/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./kafka/grafana-provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./kafka/grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards
+
+  postgres:
+    image: postgres:13
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: orders_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  mongo-users:
+    image: mongo:4.4
+    container_name: mongo-users
+    environment:
+      MONGO_INITDB_DATABASE: users_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-users-data:/data/db
+
+  mongo-inventory:
+    image: mongo:4.4
+    container_name: mongo-inventory
+    environment:
+      MONGO_INITDB_DATABASE: inventory_db
+    ports:
+      - "27018:27017"  # Expose on a different port to avoid conflict with the other MongoDB instance
+    volumes:
+      - mongo-inventory-data:/data/db
+
+  users-service:
+    build: ./services/users
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mongo-users
+      - kafka-cluster
+    volumes:
+      - ./kafka/ssl/ca-cert.pem:/etc/kafka/secrets/ca-cert.pem
+      - ./kafka/ssl/users-service-key.pem:/etc/kafka/secrets/users-service-key.pem
+      - ./kafka/ssl/users-service-certificate.pem:/etc/kafka/secrets/users-service-certificate.pem
+
+  orders-service:
+    build: ./services/orders
+    ports:
+      - "3002:3002"
+    depends_on:
+      - postgres
+      - kafka-cluster
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: orders_db
+    volumes:
+      - ./kafka/ssl/ca-cert.pem:/etc/kafka/secrets/ca-cert.pem
+      - ./kafka/ssl/orders-service-key.pem:/etc/kafka/secrets/orders-service-key.pem
+      - ./kafka/ssl/orders-service-certificate.pem:/etc/kafka/secrets/orders-service-certificate.pem
+
+  inventory-service:
+    build: ./services/inventory
+    ports:
+      - "3003:3003"
+    depends_on:
+      - mongo-inventory
+
+  graphql:
+    build: ./services/graphql
+    ports:
+      - "4000:4000"
+
+volumes:
+  prometheus-data:
+  grafana-storage:
+  postgres-data:
+  mongo-users-data:
+  mongo-inventory-data:

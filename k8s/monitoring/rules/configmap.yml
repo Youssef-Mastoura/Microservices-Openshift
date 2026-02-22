@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: microservices
+data:
+  infrastructure-alerts.yml: |
+    # This file is the same as alerts.yml above
+    # Copy the entire content from alerts.yml here
+  kubernetes-alerts.yml: |
+    # Copy the kubernetes.alerts section
+  application-alerts.yml: |
+    # Copy the application.alerts section

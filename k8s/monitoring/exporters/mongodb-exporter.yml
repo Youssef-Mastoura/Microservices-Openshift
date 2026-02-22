@@ -1,0 +1,101 @@
+# MongoDB Users Exporter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-users-exporter
+  namespace: microservices
+  labels:
+    app: mongodb-exporter
+    instance: users
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+      instance: users
+  template:
+    metadata:
+      labels:
+        app: mongodb-exporter
+        instance: users
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9216'
+    spec:
+      containers:
+      - name: mongodb-exporter
+        image: percona/mongodb_exporter:0.39.0
+        env:
+        - name: MONGODB_URI
+          value: "mongodb://mongo-users.microservices.svc.cluster.local:27017"
+        ports:
+        - containerPort: 9216
+          name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-users-exporter
+  namespace: microservices
+  labels:
+    app: mongodb-exporter
+    instance: users
+spec:
+  ports:
+  - port: 9216
+    targetPort: metrics
+    name: metrics
+  selector:
+    app: mongodb-exporter
+    instance: users
+---
+# MongoDB Inventory Exporter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-inventory-exporter
+  namespace: microservices
+  labels:
+    app: mongodb-exporter
+    instance: inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+      instance: inventory
+  template:
+    metadata:
+      labels:
+        app: mongodb-exporter
+        instance: inventory
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9216'
+    spec:
+      containers:
+      - name: mongodb-exporter
+        image: percona/mongodb_exporter:0.39.0
+        env:
+        - name: MONGODB_URI
+          value: "mongodb://mongo-inventory.microservices.svc.cluster.local:27017"
+        ports:
+        - containerPort: 9216
+          name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-inventory-exporter
+  namespace: microservices
+  labels:
+    app: mongodb-exporter
+    instance: inventory
+spec:
+  ports:
+  - port: 9216
+    targetPort: metrics
+    name: metrics
+  selector:
+    app: mongodb-exporter
+    instance: inventory

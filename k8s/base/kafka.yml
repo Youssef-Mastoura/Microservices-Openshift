@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-cluster
+  namespace: microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-cluster
+  template:
+    metadata:
+      labels:
+        app: kafka-cluster
+    spec:
+      containers:
+        - name: kafka-cluster
+          image: wurstmeister/kafka:latest
+          ports:
+            - containerPort: 9092
+          volumeMounts:
+            - name: kafka-storage
+              mountPath: /var/lib/kafka/data
+            - name: kafka-secrets
+              mountPath: /etc/kafka/secrets/kafka.server.keystore.jks
+              subPath: kafka.server.keystore.jks
+              readOnly: true
+            - name: kafka-secrets
+              mountPath: /etc/kafka/secrets/kafka.server.truststore.jks
+              subPath: kafka.server.truststore.jks
+              readOnly: true
+            - name: kafka-secrets
+              mountPath: /etc/kafka/secrets/ca-cert.pem
+              subPath: ca-cert.pem
+              readOnly: true
+            - name: kafka-jaas-config
+              mountPath: /etc/kafka/kafka_server_jaas.conf
+              subPath: kafka_server_jaas.conf
+              readOnly: true
+          envFrom:
+            - configMapRef:
+                name: kafka-config
+          env:
+            - name: KAFKA_PORT
+              value: "9092"
+            - name: KAFKA_OPTS
+              value: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+      volumes:
+        - name: kafka-storage
+          persistentVolumeClaim:
+            claimName: kafka-pvc
+        - name: kafka-secrets
+          secret:
+            secretName: kafka-secrets
+            items:
+              - key: kafka.server.keystore.jks
+                path: kafka.server.keystore.jks
+              - key: kafka.server.truststore.jks
+                path: kafka.server.truststore.jks
+              - key: ca-cert.pem
+                path: ca-cert.pem
+        - name: kafka-jaas-config
+          configMap:
+            name: kafka-jaas-config
+            items:
+              - key: kafka_server_jaas.conf
+                path: kafka_server_jaas.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-cluster
+  namespace: microservices
+spec:
+  ports:
+    - port: 9092
+  selector:
+    app: kafka-cluster
