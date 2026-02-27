@@ -2,6 +2,7 @@
 
 # Configuration
 PROJECT_NAME="ms-demo"
+MANIFEST_DIR="base"
 
 echo "---------------------------------------------------"
 echo "🚀 Starting Microservices Demo Deployment..."
@@ -16,9 +17,14 @@ else
     oc new-project "$PROJECT_NAME"
 fi
 
-# 2. Apply all YAML files in the current directory
-echo "📄 Applying manifests..."
-oc apply -f .
+# 2. Apply all YAML files in the 'base' directory
+echo "📄 Applying manifests from /$MANIFEST_DIR..."
+if [ -d "$MANIFEST_DIR" ]; then
+    oc apply -f "$MANIFEST_DIR/"
+else
+    echo "❌ Error: Directory '$MANIFEST_DIR' not found!"
+    exit 1
+fi
 
 echo "---------------------------------------------------"
 echo "⏳ Waiting for deployments to initialize..."
