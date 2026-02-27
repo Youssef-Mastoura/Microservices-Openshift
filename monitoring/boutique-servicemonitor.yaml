@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: boutique-monitor
+  namespace: ms-demo
+  labels:
+    team: monitoring
+spec:
+  selector:
+    matchLabels:
+      # This matches the "app" label on all boutique services
+      # like frontend, productcatalog, etc.
+      app: boutique 
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s

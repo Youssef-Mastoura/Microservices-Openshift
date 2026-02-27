@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: resource-saturation-alerts
+  namespace: ms-demo
+spec:
+  groups:
+  - name: resources
+    rules:
+    - alert: OutOfMemoryKilled
+      expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="ms-demo"} == 1
+      for: 1m
+      labels: { severity: critical, remediation: "increase-mem" }
+    - alert: HighCPUThrottling
+      expr: rate(container_cpu_cfs_throttled_seconds_total{namespace="ms-demo"}[5m]) > 1
+      for: 3m
+      labels: { severity: warning, remediation: "increase-cpu" }
+    - alert: PersistentVolumeFull
+      expr: kubelet_volume_stats_available_bytes{namespace="ms-demo"} / kubelet_volume_stats_capacity_bytes < 0.1
+      for: 5m
+      labels: { severity: critical, remediation: "resize-pvc" }

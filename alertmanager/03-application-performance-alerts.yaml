@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-performance-alerts
+  namespace: ms-demo
+spec:
+  groups:
+  - name: performance
+    rules:
+    - alert: HighErrorRate5xx
+      # Matches any status code starting with 5 (e.g. 500, 503)
+      expr: rate(http_requests_total{status=~"5..", namespace="ms-demo"}[5m]) > 1
+      for: 2m
+      labels: { severity: critical, remediation: "rollback-app" }
+    - alert: ExtremeLatency
+      expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="ms-demo"}[5m])) by (le)) > 2
+      for: 2m
+      labels: { severity: warning, remediation: "network-trace" }
