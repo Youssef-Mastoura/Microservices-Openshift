@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"productcatalogservice"}]'
+  labels:
+    app.openshift.io/runtime: python
+  name: recommendationservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendationservice
+  template:
+    metadata:
+      labels:
+        app: recommendationservice
+    spec:
+      containers:
+      - env:
+        - name: PORT
+          value: "8080"
+        - name: PRODUCT_CATALOG_SERVICE_ADDR
+          value: productcatalogservice:3550
+        - name: DISABLE_PROFILER
+          value: "1"
+        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice:v0.10.2
+        name: server
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          grpc:
+            port: 8080
+        readinessProbe:
+          grpc:
+            port: 8080
+        resources:
+          limits:
+            cpu: 200m
+            memory: 450Mi
+          requests:
+            cpu: 100m
+            memory: 220Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendationservice
+spec:
+  ports:
+  - name: grpc
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: recommendationservice

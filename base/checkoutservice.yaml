@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"emailservice"},{"apiVersion":"apps/v1","kind":"Deployment","name":"paymentservice"},{"apiVersion":"apps/v1","kind":"Deployment","name":"currencyservice"},{"apiVersion":"apps/v1","kind":"Deployment","name":"shippingservice"},{"apiVersion":"apps/v1","kind":"Deployment","name":"cartservice"},{"apiVersion":"apps/v1","kind":"Deployment","name":"productcatalogservice"}]'
+  labels:
+    app.openshift.io/runtime: golang
+  name: checkoutservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkoutservice
+  template:
+    metadata:
+      labels:
+        app: checkoutservice
+    spec:
+      containers:
+      - env:
+        - name: PORT
+          value: "5050"
+        - name: PRODUCT_CATALOG_SERVICE_ADDR
+          value: productcatalogservice:3550
+        - name: SHIPPING_SERVICE_ADDR
+          value: shippingservice:50051
+        - name: PAYMENT_SERVICE_ADDR
+          value: paymentservice:50051
+        - name: EMAIL_SERVICE_ADDR
+          value: emailservice:5000
+        - name: CURRENCY_SERVICE_ADDR
+          value: currencyservice:7000
+        - name: CART_SERVICE_ADDR
+          value: cartservice:7070
+        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice:v0.10.2
+        name: server
+        ports:
+        - containerPort: 5050
+        livenessProbe:
+          grpc:
+            port: 5050
+        readinessProbe:
+          grpc:
+            port: 5050
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkoutservice
+spec:
+  ports:
+  - name: grpc
+    port: 5050
+    targetPort: 5050
+  selector:
+    app: checkoutservice

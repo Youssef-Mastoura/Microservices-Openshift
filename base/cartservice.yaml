@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"redis-cart"}]'
+  labels:
+    app.openshift.io/runtime: dotnet
+  name: cartservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cartservice
+  template:
+    metadata:
+      labels:
+        app: cartservice
+    spec:
+      containers:
+      - env:
+        - name: REDIS_ADDR
+          value: redis-cart:6379
+        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice:v0.10.2
+        name: server
+        ports:
+        - containerPort: 7070
+        livenessProbe:
+          grpc:
+            port: 7070
+          initialDelaySeconds: 15
+        readinessProbe:
+          grpc:
+            port: 7070
+          initialDelaySeconds: 15
+        resources:
+          limits:
+            cpu: 300m
+            memory: 128Mi
+          requests:
+            cpu: 200m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cartservice
+spec:
+  ports:
+  - name: grpc
+    port: 7070
+    targetPort: 7070
+  selector:
+    app: cartservice
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.openshift.io/runtime: redis
+  name: redis-cart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cart
+  template:
+    metadata:
+      labels:
+        app: redis-cart
+    spec:
+      containers:
+      - image: docker.io/library/redis:alpine
+        name: redis
+        ports:
+        - containerPort: 6379
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+        readinessProbe:
+          tcpSocket:
+            port: 6379
+        resources:
+          limits:
+            cpu: 125m
+            memory: 256Mi
+          requests:
+            cpu: 70m
+            memory: 200Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /data
+          name: redis-data
+      volumes:
+      - emptyDir: {}
+        name: redis-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cart
+spec:
+  ports:
+  - name: tcp-redis
+    port: 6379
+    targetPort: 6379
+  selector:
+    app: redis-cart

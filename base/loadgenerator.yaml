@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"frontend"}]'
+  labels:
+    app.openshift.io/runtime: python
+  name: loadgenerator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgenerator
+  template:
+    metadata:
+      labels:
+        app: loadgenerator
+    spec:
+      containers:
+      - env:
+        - name: FRONTEND_ADDR
+          value: frontend:80
+        - name: USERS
+          value: "10"
+        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator:v0.10.2
+        name: main
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 300m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
+      initContainers:
+      - command:
+        - /bin/sh
+        - -exc
+        - |
+          MAX_RETRIES=12
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Pinging frontend..."
+            wget --spider -q http://${FRONTEND_ADDR}
+            if [ $? -eq 0 ]; then
+                echo "Frontend is reachable."
+                exit 0
+            fi
+            sleep $RETRY_INTERVAL
+          done
+          exit 1
+        env:
+        - name: FRONTEND_ADDR
+          value: frontend:80
+        image: docker.io/library/busybox:latest
+        name: frontend-check
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [all]
+          readOnlyRootFilesystem: true
