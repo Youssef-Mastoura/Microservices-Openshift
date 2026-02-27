@@ -34,6 +34,8 @@ spec:
           value: checkoutservice:5050
         - name: AD_SERVICE_ADDR
           value: adservice:9555
+        - name: SHOPPING_ASSISTANT_SERVICE_ADDR
+          value: "shoppingassistantservice:80"
         image: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend:v0.10.2
         name: server
         ports:
