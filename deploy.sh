@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#Create the project ms-demo first :
+#oc new-project ms-demo
+
 # Configuration
 PROJECT_NAME="ms-demo"
 MANIFEST_DIR="base"
